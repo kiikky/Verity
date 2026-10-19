@@ -1,6 +1,7 @@
+import { cache } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, unstable_rethrow } from "next/navigation";
 import { backendGetOrNull } from "../../../lib/server-api";
 import type { Artifact, Attestation, SubmissionDetail, ProofStatus } from "../../../lib/types";
 import { Card, CardBody, CardHeader } from "../../../components/ui/card";
@@ -11,7 +12,28 @@ import { TESTNET_EXPLORER_ACCOUNT, TESTNET_EXPLORER_TX } from "../../../lib/conf
 import { ChallengeWindowCountdown } from "../../../components/challenge-window-countdown";
 import { OpenChallengeButton } from "../../../components/open-challenge-button";
 
-export const metadata: Metadata = { title: "Submission" };
+const loadSubmissionDetail = cache((id: string) =>
+  backendGetOrNull<SubmissionDetail>(`/v1/submissions/${id}`)
+);
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  try {
+    const detail = await loadSubmissionDetail(id);
+    if (!detail) return { title: "Submission" };
+    const chainId = detail.submission.chain_submission_id;
+    return {
+      title: chainId !== null ? `Submission #${chainId}` : "Unsigned draft",
+    };
+  } catch (err) {
+    unstable_rethrow(err);
+    return { title: "Submission" };
+  }
+}
 
 const linkClass = "text-accent underline-offset-2 hover:underline";
 
@@ -30,7 +52,7 @@ export default async function SubmissionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const detail = await backendGetOrNull<SubmissionDetail>(`/v1/submissions/${id}`);
+  const detail = await loadSubmissionDetail(id);
   if (!detail) notFound();
   const { submission, replays, spot_checks, challenge } = detail;
 
